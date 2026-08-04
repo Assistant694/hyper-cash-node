@@ -202,7 +202,7 @@ export function analyze(t: Topology, offeredTps: number = SLO.targetTps): Analys
   const latScore = clamp(SLO.p99Ms / Math.max(1, p99), 0, 1.2) * 26;
   const availScore = clamp((availability - 99) / (99.99 - 99), 0, 1) * 22;
   const costScore = clamp(SLO.monthlyBudgetUsd / Math.max(1, monthlyCost), 0, 1.15) * 20;
-  const score = Math.round(tpsScore + latScore + availScore + costScore);
+  const score = Math.round(clamp(tpsScore + latScore + availScore + costScore, 0, 100));
 
   return {
     cacheHitRatio: hit,

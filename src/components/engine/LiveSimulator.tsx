@@ -146,7 +146,7 @@ export function LiveSimulator() {
         <div className="panel p-5 lg:col-span-2">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Throughput served vs shed</h3>
-            <span className="label-mono">{samples.length ? `t+${samples[samples.length - 1].t}s` : "idle"}</span>
+            <span className="label-mono">{samples.length ? `t+${samples[samples.length - 1]!.t}s` : "idle"}</span>
           </div>
           <div className="mt-3 h-48">
             <ResponsiveContainer width="100%" height="100%">

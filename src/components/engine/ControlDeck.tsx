@@ -60,7 +60,7 @@ export function ControlDeck({
           min={1000}
           max={40000}
           step={500}
-          onValueChange={([v]) => onOfferedTps(v)}
+          onValueChange={([v]) => onOfferedTps(v ?? offeredTps)}
           aria-label="Offered load in transactions per second"
         />
       </div>
@@ -80,7 +80,7 @@ export function ControlDeck({
               min={k.min}
               max={k.max}
               step={k.step}
-              onValueChange={([v]) => onChange({ ...topology, [k.key]: v })}
+              onValueChange={([v]) => onChange({ ...topology, [k.key]: v ?? topology[k.key] })}
               aria-label={k.label}
             />
           </div>

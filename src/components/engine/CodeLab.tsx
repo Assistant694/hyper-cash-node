@@ -397,9 +397,9 @@ spec:
 ];
 
 export function CodeLab() {
-  const [active, setActive] = useState(SNIPPETS[0].id);
+  const [active, setActive] = useState(SNIPPETS[0]!.id);
   const [copied, setCopied] = useState(false);
-  const snippet = SNIPPETS.find((s) => s.id === active) ?? SNIPPETS[0];
+  const snippet = SNIPPETS.find((s) => s.id === active) ?? SNIPPETS[0]!;
 
   const copy = async () => {
     await navigator.clipboard.writeText(snippet.code);

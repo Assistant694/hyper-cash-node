@@ -1,14 +1,16 @@
-# Welcome to your Lovable project
+# SwiftPay Engine
+
+Design a high-throughput transaction processing engine capable of handling 12,000+ TPS with low latency and high availability. Build a distributed fintech system covering payments and P2P transactions, including architecture components like API gateway, database sharding, caching, and Kafka-based event processing. Develop ACID-compliant transaction flows, idempotency, concurrency control, and fault tolerance mechanisms. Create load testing, capacity planning, and a scalable deployment strategy within budget constraints, along with a gamified simulation to test real-world system performance and reliability.     give the code
 
 This project was built with [Lovable](https://lovable.dev).
 
 ## Build with Lovable
 
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
+Continue developing this project in the [Lovable editor](https://lovable.dev/projects/73c9b970-5698-42b6-a890-f204680a73d7).
 
 - **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
+- **Stay in sync**: every change made in Lovable is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
 ## Development
 
@@ -20,10 +22,3 @@ cd <repository-name>
 npm i
 npm run dev
 ```
-
-## Built with
-
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS

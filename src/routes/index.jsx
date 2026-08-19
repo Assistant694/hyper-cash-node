@@ -1,30 +1,38 @@
-import { Activity, Cloud, Cpu, Database, Layers, Radio, ShieldCheck, Zap, Pause, Play, RotateCcw, Trophy, Check, Copy, ArrowRight, GitBranch, Github } from "lucide-react";
+import {
+  Activity,
+  Cloud,
+  Cpu,
+  Database,
+  Layers,
+  Radio,
+  ShieldCheck,
+  Zap,
+  Pause,
+  Play,
+  RotateCcw,
+  Trophy,
+  Check,
+  Copy,
+  ArrowRight,
+  GitBranch,
+  Github,
+} from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { createFileRoute } from "@tanstack/react-router";
-
-// ==================== src/lib/engine.ts ====================
-/**
- * Capacity + latency model for the payments engine.
- * Pure functions so the simulator, planner and scoring share one source of truth.
- */
-
-export type Topology = {
-  gatewayPods: number;
-  servicePods: number;
-  shards: number;
-  replicasPerShard: number;
-  cacheNodes: number;
-  kafkaPartitions: number;
-  consumers: number;
-  multiRegion: boolean;
-  batchSize: number;
-};
-
-export const DEFAULT_TOPOLOGY: Topology = {
+const DEFAULT_TOPOLOGY = {
   gatewayPods: 12,
   servicePods: 18,
   shards: 8,
@@ -35,25 +43,20 @@ export const DEFAULT_TOPOLOGY: Topology = {
   multiRegion: true,
   batchSize: 32,
 };
-
-export const SLO = {
-  targetTps: 12000,
+const SLO = {
+  targetTps: 12e3,
   p99Ms: 250,
   availability: 99.95,
-  monthlyBudgetUsd: 26000,
+  monthlyBudgetUsd: 26e3,
 };
-
-/** Per-unit throughput assumptions (TPS) derived from benchmark runs. */
 const UNIT = {
   gatewayPod: 2600,
   servicePod: 1150,
   shardWrite: 1750,
   kafkaPartition: 900,
   consumer: 1100,
-  cacheNode: 42000,
+  cacheNode: 42e3,
 };
-
-/** Monthly USD cost per unit (reserved pricing). */
 const COST = {
   gatewayPod: 46,
   servicePod: 62,
@@ -65,44 +68,16 @@ const COST = {
   observability: 900,
   multiRegionMultiplier: 1.55,
 };
-
-export type Stage = {
-  id: string;
-  name: string;
-  capacity: number;
-  utilization: number;
-  baseLatency: number;
-};
-
-export type Analysis = {
-  cacheHitRatio: number;
-  stages: Stage[];
-  maxTps: number;
-  bottleneck: Stage;
-  utilization: number;
-  p50: number;
-  p99: number;
-  availability: number;
-  monthlyCost: number;
-  costPerMillion: number;
-  meetsSlo: boolean;
-  score: number;
-  notes: string[];
-};
-
-const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
-
-export function cacheHitRatio(t: Topology): number {
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+function cacheHitRatio(t) {
   return clamp(0.55 + 0.065 * Math.log2(Math.max(1, t.cacheNodes)) * 1.6, 0, 0.93);
 }
-
-export function analyze(t: Topology, offeredTps: number = SLO.targetTps): Analysis {
+function analyze(t, offeredTps = SLO.targetTps) {
   const hit = cacheHitRatio(t);
   const batchGain = 1 + 0.35 * Math.log2(clamp(t.batchSize, 1, 256));
   const dbLoadFactor = 1 - 0.45 * hit;
   const regionGain = t.multiRegion ? 1.9 : 1;
-
-  const stages: Stage[] = [
+  const stages = [
     {
       id: "gateway",
       name: "API gateway (auth, rate limit, routing)",
@@ -146,14 +121,11 @@ export function analyze(t: Topology, offeredTps: number = SLO.targetTps): Analys
       baseLatency: 0,
     },
   ];
-
   const maxTps = Math.round(Math.min(...stages.map((s) => s.capacity)));
   const bottleneck = stages.reduce((a, b) => (a.capacity <= b.capacity ? a : b));
   for (const s of stages) s.utilization = clamp(offeredTps / s.capacity, 0, 1.4);
-
   const utilization = clamp(offeredTps / maxTps, 0, 1.4);
-
-  const queue = (s: Stage) => {
+  const queue = (s) => {
     if (s.baseLatency === 0) return 0;
     const u = clamp(s.utilization, 0, 0.985);
     return s.baseLatency * (1 / (1 - u) - 1);
@@ -165,14 +137,12 @@ export function analyze(t: Topology, offeredTps: number = SLO.targetTps): Analys
       (t.multiRegion ? 6 : 0) +
       t.batchSize * 0.18,
   );
-
   let availability = 99.5;
   if (t.replicasPerShard >= 1) availability = 99.9;
   if (t.replicasPerShard >= 2) availability = 99.95;
   if (t.multiRegion && t.replicasPerShard >= 2) availability = 99.99;
   if (utilization > 0.85) availability -= (utilization - 0.85) * 2.2;
-  availability = Math.round(clamp(availability, 95, 99.995) * 1000) / 1000;
-
+  availability = Math.round(clamp(availability, 95, 99.995) * 1e3) / 1e3;
   let monthlyCost =
     t.gatewayPods * COST.gatewayPod +
     t.servicePods * COST.servicePod +
@@ -184,11 +154,9 @@ export function analyze(t: Topology, offeredTps: number = SLO.targetTps): Analys
     COST.observability;
   if (t.multiRegion) monthlyCost *= COST.multiRegionMultiplier;
   monthlyCost = Math.round(monthlyCost);
-
-  const txPerMonth = (offeredTps * 60 * 60 * 24 * 30) / 1_000_000;
+  const txPerMonth = (offeredTps * 60 * 60 * 24 * 30) / 1e6;
   const costPerMillion = Math.round((monthlyCost / Math.max(1, txPerMonth)) * 100) / 100;
-
-  const notes: string[] = [];
+  const notes = [];
   if (maxTps < SLO.targetTps)
     notes.push(bottleneck.name + " caps the system at " + maxTps.toLocaleString() + " TPS.");
   if (p99 > SLO.p99Ms) notes.push("p99 " + p99 + "ms breaches the " + SLO.p99Ms + "ms SLO.");
@@ -200,19 +168,16 @@ export function analyze(t: Topology, offeredTps: number = SLO.targetTps): Analys
   if (utilization < 0.35 && maxTps > SLO.targetTps * 2)
     notes.push("Over-provisioned - trim capacity to recover budget.");
   if (!notes.length) notes.push("All SLOs green with headroom. Ship it.");
-
   const meetsSlo =
     maxTps >= SLO.targetTps &&
     p99 <= SLO.p99Ms &&
     availability >= SLO.availability &&
     monthlyCost <= SLO.monthlyBudgetUsd;
-
   const tpsScore = clamp(maxTps / SLO.targetTps, 0, 1.25) * 32;
   const latScore = clamp(SLO.p99Ms / Math.max(1, p99), 0, 1.2) * 26;
   const availScore = clamp((availability - 99) / (99.99 - 99), 0, 1) * 22;
   const costScore = clamp(SLO.monthlyBudgetUsd / Math.max(1, monthlyCost), 0, 1.15) * 20;
   const score = Math.round(clamp(tpsScore + latScore + availScore + costScore, 0, 100));
-
   return {
     cacheHitRatio: hit,
     stages,
@@ -229,20 +194,13 @@ export function analyze(t: Topology, offeredTps: number = SLO.targetTps): Analys
     notes,
   };
 }
-
-export type Incident = "none" | "shard_loss" | "cache_flush" | "kafka_lag" | "traffic_spike";
-
-export const INCIDENTS: { id: Incident; label: string; detail: string }[] = [
+const INCIDENTS = [
   { id: "shard_loss", label: "Kill shard leader", detail: "Raft failover, writes park on replica" },
   { id: "cache_flush", label: "Flush Redis", detail: "Cold cache, lookups hit Postgres" },
   { id: "kafka_lag", label: "Consumer lag storm", detail: "Projections fall behind head offset" },
   { id: "traffic_spike", label: "Payday spike x2.4", detail: "Burst of P2P transfers" },
 ];
-
-export function degrade(
-  t: Topology,
-  incident: Incident,
-): { topology: Topology; loadMultiplier: number } {
+function degrade(t, incident) {
   switch (incident) {
     case "shard_loss":
       return { topology: { ...t, shards: Math.max(1, t.shards - 1) }, loadMultiplier: 1 };
@@ -259,9 +217,7 @@ export function degrade(
       return { topology: t, loadMultiplier: 1 };
   }
 }
-
-// ==================== src/components/engine/ArchitectureMap.tsx ====================
-const ICONS: Record<string, typeof Cpu> = {
+const ICONS = {
   gateway: ShieldCheck,
   service: Cpu,
   cache: Zap,
@@ -269,22 +225,12 @@ const ICONS: Record<string, typeof Cpu> = {
   kafka: Radio,
   consumers: Layers,
 };
-
-function tone(u: number) {
+function tone(u) {
   if (u > 0.95) return "text-crit";
   if (u > 0.8) return "text-warn";
   return "text-ok";
 }
-
-export function ArchitectureMap({
-  analysis,
-  topology,
-  running,
-}: {
-  analysis: Analysis;
-  topology: Topology;
-  running: boolean;
-}) {
+function ArchitectureMap({ analysis, topology, running }) {
   return (
     <div className="panel p-5">
       <div className="mb-4 flex items-center justify-between">
@@ -308,9 +254,7 @@ export function ArchitectureMap({
                 />
               )}
               <div
-                className={`flex items-center gap-4 rounded-md border px-4 py-3 ${
-                  isBottleneck ? "border-warn/60 bg-warn/5" : "border-border bg-secondary/30"
-                }`}
+                className={`flex items-center gap-4 rounded-md border px-4 py-3 ${isBottleneck ? "border-warn/60 bg-warn/5" : "border-border bg-secondary/30"}`}
               >
                 <Icon className={`size-5 shrink-0 ${tone(stage.utilization)}`} aria-hidden />
                 <div className="min-w-0 flex-1">
@@ -323,13 +267,7 @@ export function ArchitectureMap({
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-grid">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        stage.utilization > 0.95
-                          ? "bg-crit"
-                          : stage.utilization > 0.8
-                            ? "bg-warn"
-                            : "bg-ok"
-                      }`}
+                      className={`h-full rounded-full transition-all duration-500 ${stage.utilization > 0.95 ? "bg-crit" : stage.utilization > 0.8 ? "bg-warn" : "bg-ok"}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -365,18 +303,7 @@ export function ArchitectureMap({
     </div>
   );
 }
-
-// ==================== src/components/engine/ControlDeck.tsx ====================
-type Knob = {
-  key: keyof Omit<Topology, "multiRegion">;
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  unit: string;
-};
-
-const KNOBS: Knob[] = [
+const KNOBS = [
   { key: "gatewayPods", label: "Gateway pods", min: 2, max: 40, step: 1, unit: "pods" },
   { key: "servicePods", label: "Txn service pods", min: 2, max: 60, step: 1, unit: "pods" },
   { key: "shards", label: "Postgres shards", min: 1, max: 32, step: 1, unit: "shards" },
@@ -386,22 +313,7 @@ const KNOBS: Knob[] = [
   { key: "consumers", label: "Consumer workers", min: 1, max: 64, step: 1, unit: "workers" },
   { key: "batchSize", label: "Group commit batch", min: 1, max: 128, step: 1, unit: "rows" },
 ];
-
-export function ControlDeck({
-  topology,
-  onChange,
-  offeredTps,
-  onOfferedTps,
-  incident,
-  onIncident,
-}: {
-  topology: Topology;
-  onChange: (t: Topology) => void;
-  offeredTps: number;
-  onOfferedTps: (n: number) => void;
-  incident: Incident;
-  onIncident: (i: Incident) => void;
-}) {
+function ControlDeck({ topology, onChange, offeredTps, onOfferedTps, incident, onIncident }) {
   return (
     <div className="panel p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -414,15 +326,13 @@ export function ControlDeck({
       <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
         <div className="flex items-baseline justify-between">
           <span className="label-mono">Offered load</span>
-          <span className="font-mono text-sm text-primary">
-            {offeredTps.toLocaleString()} TPS
-          </span>
+          <span className="font-mono text-sm text-primary">{offeredTps.toLocaleString()} TPS</span>
         </div>
         <Slider
           className="mt-3"
           value={[offeredTps]}
-          min={1000}
-          max={40000}
+          min={1e3}
+          max={4e4}
           step={500}
           onValueChange={([v]) => onOfferedTps(v ?? offeredTps)}
           aria-label="Offered load in transactions per second"
@@ -470,11 +380,7 @@ export function ControlDeck({
             <button
               key={inc.id}
               onClick={() => onIncident(incident === inc.id ? "none" : inc.id)}
-              className={`rounded-md border px-3 py-2 text-left transition-colors ${
-                incident === inc.id
-                  ? "border-crit bg-crit/10"
-                  : "border-border bg-secondary/30 hover:border-crit/50"
-              }`}
+              className={`rounded-md border px-3 py-2 text-left transition-colors ${incident === inc.id ? "border-crit bg-crit/10" : "border-border bg-secondary/30 hover:border-crit/50"}`}
             >
               <p className="text-sm font-medium">{inc.label}</p>
               <p className="text-xs text-muted-foreground">{inc.detail}</p>
@@ -485,23 +391,8 @@ export function ControlDeck({
     </div>
   );
 }
-
-// ==================== src/components/engine/LiveSimulator.tsx ====================
-type Sample = { t: number; tps: number; p99: number; errors: number };
-
-const fmt = (n: number) => n.toLocaleString("en-US");
-
-function Metric({
-  label,
-  value,
-  sub,
-  state,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  state: "ok" | "warn" | "crit";
-}) {
+const fmt = (n) => n.toLocaleString("en-US");
+function Metric({ label, value, sub, state }) {
   const color = state === "crit" ? "text-crit" : state === "warn" ? "text-warn" : "text-ok";
   return (
     <div className="panel p-4">
@@ -511,18 +402,16 @@ function Metric({
     </div>
   );
 }
-
-export function LiveSimulator() {
-  const [topology, setTopology] = useState<Topology>(DEFAULT_TOPOLOGY);
+function LiveSimulator() {
+  const [topology, setTopology] = useState(DEFAULT_TOPOLOGY);
   const [offeredTps, setOfferedTps] = useState(SLO.targetTps);
-  const [incident, setIncident] = useState<Incident>("none");
+  const [incident, setIncident] = useState("none");
   const [running, setRunning] = useState(true);
-  const [samples, setSamples] = useState<Sample[]>([]);
-  const [log, setLog] = useState<string[]>(["engine armed - 0 in-flight transactions"]);
+  const [samples, setSamples] = useState([]);
+  const [log, setLog] = useState(["engine armed - 0 in-flight transactions"]);
   const [settled, setSettled] = useState(0);
   const [rejected, setRejected] = useState(0);
   const tick = useRef(0);
-
   const { topology: effective, loadMultiplier } = useMemo(
     () => degrade(topology, incident),
     [topology, incident],
@@ -530,16 +419,13 @@ export function LiveSimulator() {
   const demand = Math.round(offeredTps * loadMultiplier);
   const analysis = useMemo(() => analyze(effective, demand), [effective, demand]);
   const planned = useMemo(() => analyze(topology, offeredTps), [topology, offeredTps]);
-
-  const pushLog = useCallback((line: string) => {
+  const pushLog = useCallback((line) => {
     setLog((prev) => [line, ...prev].slice(0, 40));
   }, []);
-
   useEffect(() => {
     if (incident === "none") return;
     pushLog(`chaos: ${incident} injected at t=${tick.current}s`);
   }, [incident, pushLog]);
-
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => {
@@ -549,12 +435,17 @@ export function LiveSimulator() {
       const dropped = Math.max(0, demand - analysis.maxTps);
       const p99 = Math.round(analysis.p99 * (1 + (Math.random() - 0.4) * 0.12));
       setSamples((prev) =>
-        [...prev, { t: tick.current, tps: Math.round(served), p99, errors: Math.round(dropped) }].slice(-45),
+        [
+          ...prev,
+          { t: tick.current, tps: Math.round(served), p99, errors: Math.round(dropped) },
+        ].slice(-45),
       );
       setSettled((s) => s + Math.round(served));
       setRejected((r) => r + Math.round(dropped));
       if (dropped > 0 && tick.current % 3 === 0)
-        pushLog(`shed ${fmt(Math.round(dropped))} req/s at ${analysis.bottleneck.id} - 429 backpressure`);
+        pushLog(
+          `shed ${fmt(Math.round(dropped))} req/s at ${analysis.bottleneck.id} - 429 backpressure`,
+        );
       if (p99 > SLO.p99Ms && tick.current % 4 === 0)
         pushLog(`p99 ${p99}ms over SLO - queue depth rising`);
       if (dropped === 0 && p99 <= SLO.p99Ms && tick.current % 7 === 0)
@@ -562,7 +453,6 @@ export function LiveSimulator() {
     }, 900);
     return () => clearInterval(id);
   }, [running, demand, analysis, pushLog]);
-
   const reset = () => {
     setSamples([]);
     setSettled(0);
@@ -571,18 +461,19 @@ export function LiveSimulator() {
     tick.current = 0;
     setLog(["engine reset - counters cleared"]);
   };
-
   const successRate = settled + rejected > 0 ? (settled / (settled + rejected)) * 100 : 100;
-
   return (
     <section id="simulator" className="mx-auto w-full max-w-7xl px-5 py-14">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="label-mono">Gamified reliability sim</p>
-          <h2 className="mt-1 text-2xl font-semibold sm:text-3xl">Run the engine, break the engine</h2>
+          <h2 className="mt-1 text-2xl font-semibold sm:text-3xl">
+            Run the engine, break the engine
+          </h2>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Tune the topology, drive synthetic load and inject failures. Score rewards hitting 12k TPS
-            at p99 &lt; 250ms and 99.95% availability without blowing the ${fmt(SLO.monthlyBudgetUsd)}/mo budget.
+            Tune the topology, drive synthetic load and inject failures. Score rewards hitting 12k
+            TPS at p99 &lt; 250ms and 99.95% availability without blowing the $
+            {fmt(SLO.monthlyBudgetUsd)}/mo budget.
           </p>
         </div>
         <div className="flex gap-2">
@@ -601,13 +492,21 @@ export function LiveSimulator() {
           label="Sustained throughput"
           value={fmt(analysis.maxTps)}
           sub={`demand ${fmt(demand)} TPS - target ${fmt(SLO.targetTps)}`}
-          state={analysis.maxTps >= SLO.targetTps ? "ok" : analysis.maxTps >= SLO.targetTps * 0.8 ? "warn" : "crit"}
+          state={
+            analysis.maxTps >= SLO.targetTps
+              ? "ok"
+              : analysis.maxTps >= SLO.targetTps * 0.8
+                ? "warn"
+                : "crit"
+          }
         />
         <Metric
           label="Latency p99 / p50"
           value={`${analysis.p99}ms`}
           sub={`p50 ${analysis.p50}ms - SLO ${SLO.p99Ms}ms`}
-          state={analysis.p99 <= SLO.p99Ms ? "ok" : analysis.p99 <= SLO.p99Ms * 1.5 ? "warn" : "crit"}
+          state={
+            analysis.p99 <= SLO.p99Ms ? "ok" : analysis.p99 <= SLO.p99Ms * 1.5 ? "warn" : "crit"
+          }
         />
         <Metric
           label="Availability"
@@ -627,7 +526,9 @@ export function LiveSimulator() {
         <div className="panel p-5 lg:col-span-2">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Throughput served vs shed</h3>
-            <span className="label-mono">{samples.length ? `t+${samples[samples.length - 1]!.t}s` : "idle"}</span>
+            <span className="label-mono">
+              {samples.length ? `t+${samples[samples.length - 1].t}s` : "idle"}
+            </span>
           </div>
           <div className="mt-3 h-48">
             <ResponsiveContainer width="100%" height="100%">
@@ -728,7 +629,10 @@ export function LiveSimulator() {
             <h3 className="text-sm font-semibold">Event stream</h3>
             <div className="mt-3 max-h-56 space-y-1 overflow-y-auto font-mono text-xs">
               {log.map((line, i) => (
-                <p key={`${i}-${line}`} className={i === 0 ? "text-primary" : "text-muted-foreground"}>
+                <p
+                  key={`${i}-${line}`}
+                  className={i === 0 ? "text-primary" : "text-muted-foreground"}
+                >
                   {line}
                 </p>
               ))}
@@ -747,8 +651,6 @@ export function LiveSimulator() {
     </section>
   );
 }
-
-// ==================== src/components/engine/TransactionFlow.tsx ====================
 const STEPS = [
   {
     step: "01",
@@ -793,8 +695,7 @@ const STEPS = [
     guard: "at-least-once, deduped",
   },
 ];
-
-export function TransactionFlow() {
+function TransactionFlow() {
   return (
     <section id="flow" className="mx-auto w-full max-w-7xl px-5 py-14">
       <p className="label-mono">ACID transaction lifecycle</p>
@@ -822,33 +723,55 @@ export function TransactionFlow() {
     </section>
   );
 }
-
-// ==================== src/components/engine/CapacityPlanner.tsx ====================
-const TIERS: { name: string; tps: number; topology: Topology }[] = [
+const TIERS = [
   {
     name: "Pilot",
-    tps: 2000,
-    topology: { ...DEFAULT_TOPOLOGY, gatewayPods: 3, servicePods: 4, shards: 2, replicasPerShard: 1, cacheNodes: 2, kafkaPartitions: 6, consumers: 4, multiRegion: false },
+    tps: 2e3,
+    topology: {
+      ...DEFAULT_TOPOLOGY,
+      gatewayPods: 3,
+      servicePods: 4,
+      shards: 2,
+      replicasPerShard: 1,
+      cacheNodes: 2,
+      kafkaPartitions: 6,
+      consumers: 4,
+      multiRegion: false,
+    },
   },
   {
     name: "Launch",
-    tps: 6000,
-    topology: { ...DEFAULT_TOPOLOGY, gatewayPods: 6, servicePods: 9, shards: 4, replicasPerShard: 2, cacheNodes: 4, kafkaPartitions: 12, consumers: 8, multiRegion: false },
+    tps: 6e3,
+    topology: {
+      ...DEFAULT_TOPOLOGY,
+      gatewayPods: 6,
+      servicePods: 9,
+      shards: 4,
+      replicasPerShard: 2,
+      cacheNodes: 4,
+      kafkaPartitions: 12,
+      consumers: 8,
+      multiRegion: false,
+    },
   },
   { name: "Target SLO", tps: SLO.targetTps, topology: DEFAULT_TOPOLOGY },
   {
     name: "Peak / payday",
-    tps: 28000,
-    topology: { ...DEFAULT_TOPOLOGY, gatewayPods: 20, servicePods: 30, shards: 16, replicasPerShard: 2, cacheNodes: 10, kafkaPartitions: 48, consumers: 32 },
+    tps: 28e3,
+    topology: {
+      ...DEFAULT_TOPOLOGY,
+      gatewayPods: 20,
+      servicePods: 30,
+      shards: 16,
+      replicasPerShard: 2,
+      cacheNodes: 10,
+      kafkaPartitions: 48,
+      consumers: 32,
+    },
   },
 ];
-
-export function CapacityPlanner() {
-  const rows = useMemo(
-    () => TIERS.map((t) => ({ ...t, a: analyze(t.topology, t.tps) })),
-    [],
-  );
-
+function CapacityPlanner() {
+  const rows = useMemo(() => TIERS.map((t) => ({ ...t, a: analyze(t.topology, t.tps) })), []);
   return (
     <section id="capacity" className="mx-auto w-full max-w-7xl px-5 py-14">
       <p className="label-mono">Capacity plan &amp; unit economics</p>
@@ -863,22 +786,27 @@ export function CapacityPlanner() {
         <table className="w-full min-w-[46rem] text-sm">
           <thead>
             <tr className="border-b border-border text-left">
-              {["Tier", "Design load", "Ceiling", "p99", "Availability", "Shards", "$ / month", "$ / M txn"].map(
-                (h) => (
-                  <th key={h} className="label-mono px-4 py-3">
-                    {h}
-                  </th>
-                ),
-              )}
+              {[
+                "Tier",
+                "Design load",
+                "Ceiling",
+                "p99",
+                "Availability",
+                "Shards",
+                "$ / month",
+                "$ / M txn",
+              ].map((h) => (
+                <th key={h} className="label-mono px-4 py-3">
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="font-mono">
             {rows.map((r) => (
               <tr
                 key={r.name}
-                className={`border-b border-border/60 last:border-0 ${
-                  r.tps === SLO.targetTps ? "bg-primary/5" : ""
-                }`}
+                className={`border-b border-border/60 last:border-0 ${r.tps === SLO.targetTps ? "bg-primary/5" : ""}`}
               >
                 <td className="px-4 py-3 font-sans font-medium">{r.name}</td>
                 <td className="px-4 py-3">{fmt(r.tps)} TPS</td>
@@ -922,9 +850,7 @@ export function CapacityPlanner() {
     </section>
   );
 }
-
-// ==================== src/components/engine/CodeLab.tsx ====================
-const SNIPPETS: { id: string; label: string; lang: string; code: string }[] = [
+const SNIPPETS = [
   {
     id: "schema",
     label: "Sharded ledger schema",
@@ -1317,18 +1243,15 @@ spec:
         target: { type: AverageValue, averageValue: "180" }`,
   },
 ];
-
-export function CodeLab() {
-  const [active, setActive] = useState(SNIPPETS[0]!.id);
+function CodeLab() {
+  const [active, setActive] = useState(SNIPPETS[0].id);
   const [copied, setCopied] = useState(false);
-  const snippet = SNIPPETS.find((s) => s.id === active) ?? SNIPPETS[0]!;
-
+  const snippet = SNIPPETS.find((s) => s.id === active) ?? SNIPPETS[0];
   const copy = async () => {
     await navigator.clipboard.writeText(snippet.code);
     setCopied(true);
     setTimeout(() => setCopied(false), 1600);
   };
-
   return (
     <section id="code" className="mx-auto w-full max-w-7xl px-5 py-14">
       <p className="label-mono">Reference implementation</p>
@@ -1344,11 +1267,7 @@ export function CodeLab() {
           <button
             key={s.id}
             onClick={() => setActive(s.id)}
-            className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-colors ${
-              active === s.id
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"
-            }`}
+            className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-colors ${active === s.id ? "border-primary bg-primary/10 text-primary" : "border-border bg-secondary/30 text-muted-foreground hover:text-foreground"}`}
           >
             {s.label}
           </button>
@@ -1370,18 +1289,16 @@ export function CodeLab() {
     </section>
   );
 }
-
-// ==================== src/routes/index.tsx ====================
-export const Route = createFileRoute("/")({
+const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Ledgerline — 12k TPS Payments Engine Blueprint & Simulator" },
+      { title: "Ledgerline \u2014 12k TPS Payments Engine Blueprint & Simulator" },
       {
         name: "description",
         content:
           "Interactive blueprint for a distributed payments and P2P engine: 12,000+ TPS, sharded ACID ledger, idempotency, Kafka outbox, chaos simulator, capacity plan and reference code.",
       },
-      { property: "og:title", content: "Ledgerline — 12k TPS Payments Engine Blueprint" },
+      { property: "og:title", content: "Ledgerline \u2014 12k TPS Payments Engine Blueprint" },
       {
         property: "og:description",
         content:
@@ -1393,14 +1310,12 @@ export const Route = createFileRoute("/")({
   }),
   component: Index,
 });
-
 const HERO_STATS = [
   { k: `${SLO.targetTps.toLocaleString()}+`, v: "sustained TPS" },
   { k: `< ${SLO.p99Ms}ms`, v: "p99 commit latency" },
   { k: "99.99%", v: "multi-region availability" },
-  { k: `$${(SLO.monthlyBudgetUsd / 1000).toFixed(0)}k`, v: "monthly infra budget" },
+  { k: `$${(SLO.monthlyBudgetUsd / 1e3).toFixed(0)}k`, v: "monthly infra budget" },
 ];
-
 function Index() {
   return (
     <main className="min-h-screen">
@@ -1411,10 +1326,18 @@ function Index() {
             <span className="font-mono text-sm font-semibold tracking-tight">ledgerline</span>
           </div>
           <div className="hidden gap-6 font-mono text-xs text-muted-foreground md:flex">
-            <a className="hover:text-foreground" href="#simulator">simulator</a>
-            <a className="hover:text-foreground" href="#flow">txn flow</a>
-            <a className="hover:text-foreground" href="#capacity">capacity</a>
-            <a className="hover:text-foreground" href="#code">code</a>
+            <a className="hover:text-foreground" href="#simulator">
+              simulator
+            </a>
+            <a className="hover:text-foreground" href="#flow">
+              txn flow
+            </a>
+            <a className="hover:text-foreground" href="#capacity">
+              capacity
+            </a>
+            <a className="hover:text-foreground" href="#code">
+              code
+            </a>
           </div>
           <Button size="sm" asChild>
             <a href="#simulator">
@@ -1433,10 +1356,11 @@ function Index() {
           <span className="text-primary"> without losing a cent</span>
         </h1>
         <p className="mt-5 max-w-2xl text-base text-muted-foreground">
-          Ledgerline is a full blueprint and live simulator for a high-throughput fintech transaction
-          system: API gateway admission control, hash-sharded Postgres with a double-entry ledger,
-          Redis-backed idempotency, Kafka event processing through a transactional outbox, and chaos
-          drills that prove the failure modes before customers find them.
+          Ledgerline is a full blueprint and live simulator for a high-throughput fintech
+          transaction system: API gateway admission control, hash-sharded Postgres with a
+          double-entry ledger, Redis-backed idempotency, Kafka event processing through a
+          transactional outbox, and chaos drills that prove the failure modes before customers find
+          them.
         </p>
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {HERO_STATS.map((s) => (
@@ -1465,3 +1389,18 @@ function Index() {
     </main>
   );
 }
+export {
+  ArchitectureMap,
+  CapacityPlanner,
+  CodeLab,
+  ControlDeck,
+  DEFAULT_TOPOLOGY,
+  INCIDENTS,
+  LiveSimulator,
+  Route,
+  SLO,
+  TransactionFlow,
+  analyze,
+  cacheHitRatio,
+  degrade,
+};

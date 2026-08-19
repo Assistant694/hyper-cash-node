@@ -843,8 +843,6 @@ const TIERS: { name: string; tps: number; topology: Topology }[] = [
   },
 ];
 
-const fmt = (n: number) => n.toLocaleString("en-US");
-
 export function CapacityPlanner() {
   const rows = useMemo(
     () => TIERS.map((t) => ({ ...t, a: analyze(t.topology, t.tps) })),
